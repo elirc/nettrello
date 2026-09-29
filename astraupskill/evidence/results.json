@@ -1,0 +1,8 @@
+{
+  "passed": true,
+  "passedTests": 1,
+  "testCountMeaning": "one domain/service console harness plus one HTTP script; not separately discovered unit tests",
+  "checks": [
+    "verify-03.json"
+  ]
+}

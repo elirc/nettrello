@@ -1,0 +1,30 @@
+@api = http://localhost:5088
+@boardId = 78e3d235-44e3-4668-aa9b-81583d4a5fd5
+
+### Health
+GET {{api}}/health
+
+### List boards
+GET {{api}}/api/boards
+
+### Get a board
+GET {{api}}/api/boards/{{boardId}}
+
+### Create a board
+POST {{api}}/api/boards
+Content-Type: application/json
+
+{
+  "name": "Engineering roadmap",
+  "description": "Quarterly planning board"
+}
+
+### Add a column
+POST {{api}}/api/boards/{{boardId}}/columns
+Content-Type: application/json
+X-Board-Version: 8
+
+{
+  "title": "Blocked",
+  "cardLimit": 2
+}
