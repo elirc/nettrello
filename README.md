@@ -55,7 +55,7 @@ Open `http://localhost:5173`. The client expects the API at `http://localhost:50
 
 ## Next Production Steps
 
-The source-grounded review course is in [`astraupskill/README.md`](astraupskill/README.md).
+The source-grounded review course is in [`astraupskill/README.md`](astraupskill/README.md). The cross-stack comparison course — which of gitjira-rebuild's four concurrency/authorization invariants NetTrello actually keeps — is in [`astraupskill/course/LEARNING-PATH.md`](astraupskill/course/LEARNING-PATH.md).
 
 - Add authentication and authorization policies around boards and memberships.
 - Replace `InMemoryBoardRepository` with durable persistence and migration scripts.
