@@ -33,7 +33,7 @@ No database server, no Docker, no Python, no PowerShell.
 | 02 Concepts (incl. the `JsonValueKind` table and the database section) | 60 min |
 | 03 Worked change | 40 min |
 | 04 Testing and debugging | 45 min |
-| 05 Practice (9 exercises + red-first lab) | 90 min |
+| 05 Practice (9 exercises, each with a Check, + red-first lab) | 90 min |
 | 06 Solutions and review | 30 min |
 | 07 Trace lab | 30 min |
 | VERIFICATION | 10 min |
@@ -47,7 +47,7 @@ No database server, no Docker, no Python, no PowerShell.
 | **`JsonElement` / `JsonValueKind`** | `System.Text.Json`'s untyped view of one JSON value. A non-nullable `JsonElement` property is `Undefined` when the client omitted the field, which is the distinction the whole course rests on. | the `JsonElement` properties of `UpdateCardRequest`, `Contracts/BoardDtos.cs` |
 | **`[JsonUnmappedMemberHandling(Disallow)]`** | Makes a typo'd or unknown JSON property a deserialization error (a 400) instead of a silently ignored no-op. | the attribute on `UpdateCardRequest`, `Contracts/BoardDtos.cs` |
 | **`Enum.TryParse` + `Enum.IsDefined`** | `TryParse` alone accepts `"99"` and produces an undefined enum value; `IsDefined` is what rejects it. You need both. | the priority reader inside `ResolveAgainst`, `Contracts/BoardDtos.cs` |
-| **Optimistic concurrency / `expectedVersion`** | Two clients edit the same board; instead of locking, each write states the version it read. A mismatch is rejected (`board.version_conflict` → 409/412) rather than silently overwriting. | `MutateAsync` raising `board.version_conflict` in `Application/BoardService.cs` |
+| **Optimistic concurrency / `expectedVersion`** | Two clients edit the same board; instead of locking, each write states the version it read. A mismatch is rejected (`board.version_conflict` → 409; chapter 02 explains why an EF Core version would more often use 412) rather than silently overwriting. Sending the header is optional; see 06, finding A. | `MutateAsync` raising `board.version_conflict` in `Application/BoardService.cs` |
 | **Clone-on-write repository** | `GetAsync` returns a deep copy, so a caller who mutates it cannot corrupt stored state. See chapter 02 for what EF Core's change tracker does instead. | `Clone()` in `src/NetTrello.Api/Infrastructure/InMemoryBoardRepository.cs` |
 | **Problem response / contract `code`** | The machine-readable error body. Tests assert the `code` field, not just a non-200 status, so a middleware change that turns an error into an HTML page is caught. | `WriteProblemAsync` in `Middleware/ExceptionHandlingMiddleware.cs` |
 | **Snapshot assertion** | Serialising the whole board before and after a rejected operation and comparing the strings, which is how "nothing was mutated" becomes a real assertion. | `tests/NetTrello.Tests/BoardAggregateTests.cs` |

@@ -1,40 +1,58 @@
 # Practice exercises
 
-Use the seeded board id from `InMemoryBoardRepository` only for HTTP exercises; use synthetic IDs in new domain fixtures. First, list the call graph from PATCH route to `Card.Update` and mark where the current card is read.
+Use the seeded board id from `InMemoryBoardRepository` only for HTTP exercises; use synthetic IDs in new domain fixtures. First, list the call graph from PATCH route to `Card.Update` and mark where the current card is read (`BoardService.cs:77-79`).
 
-1. Send `{"title":"Renamed"}` to a card whose description, priority, assignee, due date, and labels are populated. Predict every field after the response. Then send `{"description":null,"labels":null}` and explain why both clear.
-2. Send `{}`, `{"priority":"Imaginary"}`, `{"title":null}`, and `{"labels":["ok",4]}`. For each, predict status, problem code, and whether board version changes.
-3. Create a full target column at its limit. Attempt a cross-column move, a missing target move, and a negative position. Record source order, target order, card position, timestamp, and version before and after each rejection.
-4. Move two cards within the same full column. Explain why capacity is not a reason to reject and how positions should be reindexed.
-5. Start two service mutations with the same `X-Board-Version`. Design assertions proving exactly one success, one conflict, and no lost column/card changes.
-6. Mutate a board returned by `GetAsync`, then read it again. What repository property must make the second read unchanged?
-7. Decide which failures belong to domain tests, service tests, repository tests, and HTTP tests. Do not claim an HTTP status from a pure domain assertion.
+Every exercise has a **Goal** and a **Check**. A Check either names the existing test that encodes the answer — run one with
+`dotnet test tests/NetTrello.Tests/NetTrello.Tests.csproj -c Release --filter "FullyQualifiedName~<TestName>"` — or states what your new test must assert. Write an expected-state table (response, writes, version, timestamps, visible fields) before running anything.
 
-For each exercise write an expected-state table with response, writes, version, timestamps, and visible fields. Then compare your answer with the matched solutions chapter.
+**1. Omitted versus null.**
+- Goal: send `{"title":"Renamed"}` to a card whose description, priority, assignee, due date and labels are populated; predict every field. Then send `{"description":null,"labels":null}` and explain why both clear.
+- **Check:** `CardPatchTests.TitleOnlyPatch_AppliesTitleAndPreservesEveryOmittedField` and `CardPatchTests.ExplicitNulls_ClearNullableFields_AndAStringPriorityIsParsed`; over HTTP, `BoardApiTests.TitleOnlyPatch_Returns200_AndPreservesTheOmittedDescription`.
 
+**2. Malformed bodies.**
+- Goal: for `{}`, `{"priority":"Imaginary"}`, `{"title":null}` and `{"labels":["ok",4]}`, predict status, problem code and whether the board version changes. Use a table `body | status | code | version delta | changed fields`.
+- **Check:** the five rows of `CardPatchTests.MalformedPatch_IsRejectedWithItsContractCode_AndChangesNothing` (service level, asserts an unchanged reloaded board) and the two rows of `BoardApiTests.MalformedPatch_Returns400_WithItsContractCode` (HTTP level).
 
-For exercise 2, include a table like `body | status | code | version delta | changed fields`. For exercise 3, include source and target card id order as well as counts. For exercise 5, record both returned status and final repository version, then explain why either request may win without violating correctness. A strong answer names the lock and the clone separately. For exercise 6, distinguish mutating the returned board object from calling `UpdateAsync`; only the latter is a persistence operation. These tables make the exercise reviewable without relying on an implementation guess.
+**3. Rejected moves.**
+- Goal: with the full "Target" column from `BoardFixture`, attempt a cross-column move, a move to a missing column and a move to position -1. Record source order, target order, card position, timestamp and version before and after each rejection.
+- **Check:** `BoardAggregateTests.MoveCard_ToAFullColumn_...`, `MoveCard_ToAMissingColumn_...` and `MoveCard_ToANegativePosition_...`; each compares whole-board snapshots including `Version` and `UpdatedAt`. Then name the order of the checks in `Board.cs:86-107`: target lookup (line 89), position (90), same-column branch (92-97), capacity (99-102), and only then removal (104).
 
+**4. Reorder inside a full column.**
+- Goal: explain why capacity is not a reason to reject a same-column move and how positions are reindexed.
+- **Check:** `BoardAggregateTests.MoveCard_ReordersWithinItsOwnColumn_EvenWhenAnotherColumnIsFull` covers the unlimited source column only. Write the missing case: make a column full, reorder within it, and assert success plus contiguous positions `0..n-1` (`BoardColumn.RepositionCard`, lines 50-58).
 
-After writing each prediction, open the corresponding method and identify the first mutating statement. For PATCH it should be after `ResolveAgainst`; for a move it should be after target and capacity checks; for a repository update it should be inside the semaphore. If your expected table cannot name a precise first mutation, the design is still unclear. Extend the harness only with synthetic members and cards, and keep each new scenario isolated from the seeded HTTP process.
+**5. Two writers, one version.**
+- Goal: two service mutations carry the same `X-Board-Version`; design assertions proving exactly one success, one conflict and no lost change. Name the lock and the clone separately.
+- **Check:** `BoardAggregateTests.TwoWritesWithTheSameExpectedVersion_LeaveExactlyOneWinner` asserts the 1/1 split. Extend it to assert the final board has exactly one new column and `Version` increased by exactly one.
 
+**6. Clone isolation.**
+- Goal: mutate a board returned by `GetAsync`, read again, and name the repository property that keeps the second read unchanged.
+- **Check:** `BoardAggregateTests.TheRepositoryHandsOutAnIsolatedClone`; the property is the `Clone()` on read (`InMemoryBoardRepository.cs:45`) and on store (line 78). Mutating the returned object is not a persistence operation; only `UpdateAsync` is.
 
-## Exercise 8: write the [Fact] yourself
+**7. Which layer owns which failure.**
+- Goal: assign each failure above to domain, service, repository or HTTP tests, without claiming an HTTP status from a pure domain assertion.
+- **Check:** your table matches the three classes in chapter 04's table; every HTTP status you cite comes from a `BoardApiTests` case.
 
-Open `tests/NetTrello.Tests/BoardAggregateTests.cs`. Add a test that moves a card to a *valid* position in the target column after first removing one of the two cards that fill it, and assert the source column, the target column, the moved card's `Position`, and that `board.Version` increased by exactly one. Predict each value before running. This is the positive counterpart to the three rejection tests, and a suite without it can be passed by an implementation that rejects everything.
+**8. Write the positive move test yourself.**
+- Goal: in `BoardAggregateTests.cs`, remove one card from the full target column, then move a source card to a valid target position. Assert source column, target column, the moved card's `Position`, and that `board.Version` increased by exactly one.
+- **Check:** the new test passes; and replacing the four mutating lines of `Board.MoveCard` (`Board.cs:104-107`) with `throw DomainException.Conflict("column.card_limit", "x");` makes it fail while the three rejection tests and the same-column reorder test stay green. That is the proof that a suite with only rejection tests can be passed by an implementation that rejects everything.
 
-## Exercise 9: add a row to the theory
-
-Add `{"assigneeId":"not-a-guid"}` to the `[InlineData]` rows of `MalformedPatch_IsRejectedWithItsContractCode_AndChangesNothing`. Predict the contract code before you run it; if the run disagrees with your prediction, decide which one is wrong — the test or the service — and say why. (Hint: read `ResolveAgainst` in `BoardService`; a code you did not expect may be a real reporting gap rather than your mistake.)
+**9. Add a row to the theory.**
+- Goal: add `{"assigneeId":"not-a-guid"}` to `MalformedPatch_IsRejectedWithItsContractCode_AndChangesNothing` and predict the code first.
+- **Check:** the row passes with `card.field_invalid`, raised by `ReadNullableGuid` in `BoardDtos.cs` ("assigneeId must be a GUID or null."). Decide whether a field-generic code is a reporting gap; compare with the dedicated `card.priority_invalid` and `card.labels_invalid` codes.
 
 ## Lab: red-first from the snapshots
 
-The exact pre-change files are at the project root under `../snapshots/`: `Card-before.cs.txt`, `BoardColumn-before.cs.txt`, `Board-before.cs.txt`, `BoardDtos-before.cs.txt`, `BoardService-before.cs.txt`.
+The exact pre-change files are at the project root under `../snapshots/`. **Do not copy whole snapshot files over the sources:** the current `BoardService.cs:77-78` calls `board.GetCard` and `request.ResolveAgainst`, which do not exist in `Board-before.cs.txt` and `BoardDtos-before.cs.txt`, and `CardPatchTests.cs:55` constructs the new `UpdateCardRequest` with property initializers. A whole-file copy of either fails to compile (CS1061 for the missing methods; the positional record also has no parameterless constructor for the test's initializer), so no test runs. Revert behavior, not files:
 
-1. Copy `Board-before.cs.txt` over `src/NetTrello.Api/Domain/Board.cs` and `BoardDtos-before.cs.txt` over `src/NetTrello.Api/Contracts/BoardDtos.cs`.
-2. **Predict, in writing, which of the 21 tests go red.** Be specific about the PATCH ones: with the pre-change DTO, what does a title-only body do to the description, and which assertion catches it?
-3. Run `dotnet test tests/NetTrello.Tests/NetTrello.Tests.csproj -c Release` and record every failing name and message.
-4. Compare. Pay attention to any test you expected to fail that passed — that is a gap in the suite, and finding one is a better outcome than a clean prediction.
-5. Restore the delivered files, re-run to green, and write one sentence per failure naming the line of the repair that fixed it.
+1. **Card.** Copy `../snapshots/Card-before.cs.txt` over `src/NetTrello.Api/Domain/Card.cs`. This one compiles, because nothing outside `Card` calls the new private `EnsurePriority`.
+2. **Board.MoveCard.** In `src/NetTrello.Api/Domain/Board.cs`, replace only the body of `MoveCard` with the snapshot's body (`Board-before.cs.txt:86-92`: remove from source, `MoveTo`, find target, `AddCard`, `Touch`). Keep `GetCard`.
+3. **Predict in writing** which of the 21 tests go red and on which assertion, then run `dotnet test tests/NetTrello.Tests/NetTrello.Tests.csproj -c Release`.
+4. Restore with `git checkout -- src` and re-run to 21 green. Write one sentence per failure naming the line of the repair that fixed it.
 
-This lab is also the fastest way to see why the old fail-fast console harness was replaced: with the pre-change files it stopped at the first mismatch, so you learned about one broken behaviour per run instead of all of them.
+**Check (derived from the source on 2026-10-06, not from a recorded run; confirm with yours):** 4 red, 17 green.
+- `CardUpdate_WithABlankLabel_PreservesEveryField`: the error code still matches (`validation.required`), but the card snapshot differs because the old `Update` assigned title, description and priority before `NormalizeLabels` threw.
+- `MoveCard_ToAMissingColumn_...`, `MoveCard_ToAFullColumn_...`, `MoveCard_ToANegativePosition_...`: each still throws the expected code, but the whole-board snapshot differs because the card was already removed from its source.
+- Green, and worth explaining: `MoveCard_ReordersWithinItsOwnColumn_...` (the source column is unlimited, so remove-then-add still yields `Second,First`), every PATCH test (the priority and label checks the old `Card` lacked are also enforced by `ResolveAgainst`), and the version and clone tests.
+
+The red tests fail on the *second* assertion, not the first: the exception code alone cannot see a partial mutation. That is the case for snapshot assertions.
